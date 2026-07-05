@@ -1,5 +1,9 @@
-# mespy
+# MesPy
 
+[![PyPI version](https://img.shields.io/pypi/v/mespy.svg)](https://pypi.org/project/mespy/)
+[![Python versions](https://img.shields.io/pypi/pyversions/mespy.svg)](https://pypi.org/project/mespy/)
+[![License](https://img.shields.io/pypi/l/mespy.svg)](https://github.com/giancarmine-sparso/mespy/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://giancarmine-sparso.github.io/mespy/)
 > Documentation: [giancarmine-sparso.github.io/mespy](https://giancarmine-sparso.github.io/mespy/index.html#)
 
 Small Python toolbox for mechanics laboratory data analysis.
