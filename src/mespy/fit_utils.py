@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -22,11 +22,12 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 FloatVector = NDArray[np.float64]
+FitMethod = Literal["absolute", "residual"]
 
 
 @dataclass(frozen=True, slots=True)
 class LinearFitResult:
-    """Risultato immutabile di un fit lineare pesato."""
+    """Risultato immutabile di un fit lineare."""
 
     slope: float
     intercept: float
@@ -42,6 +43,8 @@ class LinearFitResult:
     iterations: int
     converged: bool
     figure: Figure | None
+    fit_method: FitMethod = "absolute"
+    scale_factor: float = 1.0
 
 
 def _validate_positive_vector(
@@ -78,6 +81,13 @@ def _validate_max_iter(max_iter: int) -> int:
     return max_iter_int
 
 
+def _validate_fit_method(fit_method: str) -> FitMethod:
+    if fit_method not in ("absolute", "residual"):
+        raise ValueError("fit_method deve essere 'absolute' oppure 'residual'")
+
+    return cast(FitMethod, fit_method)
+
+
 def _fit_coefficients(
     x: FloatVector,
     y: FloatVector,
@@ -96,8 +106,9 @@ def _fit_coefficients(
 def lin_fit(
     x: ArrayLike,
     y: ArrayLike,
-    sigma_y: ArrayLike,
+    sigma_y: ArrayLike | None = None,
     *,
+    fit_method: FitMethod = "absolute",
     sigma_x: ArrayLike | None = None,
     tol: float = 1e-10,
     max_iter: int = 100,
@@ -134,16 +145,23 @@ def lin_fit(
     grid_alpha: float | None = None,  # gestito da grid.alpha nello stile
 ) -> LinearFitResult:
     """
-    Weighted linear fit ``y = m * x + c`` with uncertainty propagation.
+    Linear fit ``y = m * x + c`` with uncertainty propagation.
 
-    Estimates slope and intercept through weighted least squares using
-    weights ``w_i = 1 / sigma_y_i**2``. If ``sigma_x`` is provided, the
-    function iteratively updates the effective variance
-    ``sigma_eff**2 = sigma_y**2 + m**2 * sigma_x**2`` until the slope
-    converges. It computes parameter uncertainties, covariance,
-    residuals, and fit diagnostics (``chi2`` and reduced ``chi2``).
-    Optionally, it generates a two-panel plot (data + fit line,
-    regular or normalized residuals).
+    Estimates slope and intercept through weighted least squares. In
+    ``fit_method="absolute"`` mode, it uses absolute uncertainties on
+    ``y`` and weights ``w_i = 1 / sigma_y_i**2``. In
+    ``fit_method="residual"`` mode, it estimates the uncertainty scale
+    from the residuals: without
+    ``sigma_y`` this is the standard unweighted linear fit with one
+    common vertical uncertainty estimated after the fit; with
+    ``sigma_y`` the provided uncertainties define relative weights and
+    the final covariance is scaled by the observed reduced chi-squared.
+    If ``sigma_x`` is provided, the function iteratively updates the
+    effective variance ``sigma_eff**2 = sigma_y**2 + m**2 * sigma_x**2``
+    until the slope converges. It computes parameter uncertainties,
+    covariance, residuals, and fit diagnostics (``chi2`` and reduced
+    ``chi2``). Optionally, it generates a two-panel plot (data + fit
+    line, regular or normalized residuals).
 
     Aesthetic parameters with an ``rcParams`` counterpart (``figsize``,
     ``dpi``, colors, grid, title, legend) are managed by the
@@ -158,9 +176,17 @@ def lin_fit(
     y : array-like
         Values of the dependent variable; must have the same length as
         ``x``.
-    sigma_y : array-like
+    sigma_y : array-like or None, optional
         Positive uncertainties on ``y``; must have the same length as
-        ``x``.
+        ``x``. Required when ``fit_method="absolute"``. If omitted with
+        ``fit_method="residual"``, the fit uses equal weights and
+        estimates one common vertical uncertainty from the residuals.
+    fit_method : {"absolute", "residual"}, optional
+        Uncertainty model. ``"absolute"`` treats ``sigma_y`` and
+        ``sigma_x`` as absolute input uncertainties. ``"residual"``
+        estimates one global scale factor from the residuals and
+        applies it to parameter uncertainties, plotted error bars,
+        normalized residuals, and the fit band (default ``"absolute"``).
     sigma_x : array-like or None, optional
         Positive uncertainties on ``x``. If provided, enables the
         effective variance update and iterative slope refinement
@@ -284,9 +310,18 @@ def lin_fit(
         - ``converged`` : bool - ``True`` if the fit converged.
         - ``figure`` : matplotlib.figure.Figure or None - generated
           figure, ``None`` if ``show_plot=False``.
+        - ``fit_method`` : {"absolute", "residual"} - uncertainty model used.
+        - ``scale_factor`` : float - factor applied to the input
+          uncertainties in residual-scale mode (``1`` in absolute mode).
 
     Raises
     ------
+    ValueError
+        If ``fit_method`` is not ``"absolute"`` or ``"residual"``.
+    ValueError
+        If ``sigma_y`` is missing when ``fit_method="absolute"``.
+    ValueError
+        If ``sigma_x`` is provided without ``sigma_y`` in residual-scale mode.
     ValueError
         If ``x``, ``y``, and ``sigma_y`` have different lengths.
     ValueError
@@ -312,9 +347,22 @@ def lin_fit(
         If the fit does not converge within ``max_iter`` iterations
         (only when ``sigma_x`` is provided).
     """
+    fit_method = _validate_fit_method(fit_method)
+    use_residual_scale = fit_method == "residual"
+
     x_values = _as_float_vector("x", x)
     y_values = _as_float_vector("y", y)
-    sigma_y_values = _validate_positive_vector("sigma_y", sigma_y)
+
+    if sigma_y is None:
+        if not use_residual_scale:
+            raise ValueError("sigma_y è obbligatorio quando fit_method='absolute'")
+        if sigma_x is not None:
+            raise ValueError(
+                "sigma_x può essere usato con fit_method='residual' solo se sigma_y è presente"
+            )
+        sigma_y_values = np.ones_like(x_values)
+    else:
+        sigma_y_values = _validate_positive_vector("sigma_y", sigma_y)
 
     if x_values.shape != y_values.shape or x_values.shape != sigma_y_values.shape:
         raise ValueError("x, y e sigma_y devono avere la stessa lunghezza")
@@ -379,25 +427,57 @@ def lin_fit(
                 f"Il fit lineare non converge entro max_iter={max_iter_value}"
             )
 
-    sum_w = float(np.sum(weights))
-    var_m = 1.0 / (var_x * sum_w)
-    var_c = weighted_mean(x_values**2, weights) / (var_x * sum_w)
-    cov_mc = -weighted_mean(x_values, weights) / (var_x * sum_w)
-
-    sigma_m = float(np.sqrt(var_m))
-    sigma_c = float(np.sqrt(var_c))
-    rho_mc = float(cov_mc / (sigma_m * sigma_c))
-
     residuals = y_values - slope * x_values - intercept
     dof = n - 2
     residual_std = float(np.sqrt(np.sum(residuals**2) / dof))
 
-    sigma_fit2 = sigma_y2 if sigma_x2 is None else sigma_y2 + slope**2 * sigma_x2
+    raw_sigma_fit2 = (
+        sigma_y2 if sigma_x2 is None else sigma_y2 + slope**2 * sigma_x2
+    )
+    raw_chi2 = float(np.sum((residuals**2) / raw_sigma_fit2))
+    raw_reduced_chi2 = float(raw_chi2 / dof)
 
-    normalized_residuals = residuals / np.sqrt(sigma_fit2)
+    covariance_scale = raw_reduced_chi2 if use_residual_scale else 1.0
+    scale_factor = float(np.sqrt(covariance_scale))
 
-    chi2 = float(np.sum((residuals**2) / sigma_fit2))
-    reduced_chi2 = float(chi2 / dof)
+    sum_w = float(np.sum(weights))
+    base_var_m = 1.0 / (var_x * sum_w)
+    base_var_c = weighted_mean(x_values**2, weights) / (var_x * sum_w)
+    base_cov_mc = -weighted_mean(x_values, weights) / (var_x * sum_w)
+
+    base_sigma_m = float(np.sqrt(base_var_m))
+    base_sigma_c = float(np.sqrt(base_var_c))
+    rho_mc = float(base_cov_mc / (base_sigma_m * base_sigma_c))
+
+    var_m = base_var_m * covariance_scale
+    var_c = base_var_c * covariance_scale
+    cov_mc = base_cov_mc * covariance_scale
+
+    sigma_m = float(np.sqrt(var_m))
+    sigma_c = float(np.sqrt(var_c))
+
+    sigma_fit2 = raw_sigma_fit2 * covariance_scale
+    if use_residual_scale:
+        if covariance_scale > 0:
+            chi2 = float(raw_chi2 / covariance_scale)
+            reduced_chi2 = float(chi2 / dof)
+        else:
+            chi2 = 0.0
+            reduced_chi2 = 0.0
+    else:
+        chi2 = raw_chi2
+        reduced_chi2 = raw_reduced_chi2
+
+    normalized_residuals = np.divide(
+        residuals,
+        np.sqrt(sigma_fit2),
+        out=np.zeros_like(residuals),
+        where=sigma_fit2 > 0,
+    )
+    plot_sigma_y_values = sigma_y_values * scale_factor
+    plot_sigma_x_values = (
+        sigma_x_values * scale_factor if sigma_x_values is not None else None
+    )
 
     if save_path is not None and not show_plot:
         raise ValueError("save_path può essere usato solo se show_plot=True")
@@ -456,8 +536,8 @@ def lin_fit(
             fig, (ax_fit, ax_res) = plt.subplots(2, 1, **subplots_kwargs)
 
             errorbar_kwargs: dict = {
-                "yerr": sigma_y_values,
-                "xerr": sigma_x_values if use_sigma_x else None,
+                "yerr": plot_sigma_y_values,
+                "xerr": plot_sigma_x_values if use_sigma_x else None,
                 "fmt": "o",
                 "markersize": 4,
                 "elinewidth": 1,
@@ -488,7 +568,7 @@ def lin_fit(
 
             if show_band:
                 x_bar = weighted_mean(x_values, weights)
-                sigma_y_fit = np.sqrt(
+                sigma_y_fit = scale_factor * np.sqrt(
                     1.0 / sum_w + (x_fit - x_bar) ** 2 / (var_x * sum_w)
                 )
                 ax_fit.fill_between(
@@ -530,7 +610,7 @@ def lin_fit(
             residuals_yerr = (
                 np.ones_like(normalized_residuals)
                 if normalize_residuals
-                else sigma_y_values
+                else plot_sigma_y_values
             )
             residuals_axis_label = (
                 r"Residuals / $\sigma_\mathrm{eff}$"
@@ -587,4 +667,6 @@ def lin_fit(
         iterations=iterations,
         converged=converged,
         figure=fig,
+        fit_method=fit_method,
+        scale_factor=scale_factor,
     )

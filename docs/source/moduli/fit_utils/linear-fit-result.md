@@ -24,6 +24,8 @@ Raccogliere in un unico contenitore tipizzato i parametri del fit, le incertezze
 - `iterations`: numero di aggiornamenti dei pesi effettuati.
 - `converged`: indica se l'iterazione con `sigma_x` ha soddisfatto il criterio di arresto.
 - `figure`: oggetto matplotlib oppure `None` se `show_plot=False`.
+- `fit_method`: modello di incertezza usato, `"absolute"` oppure `"residual"`.
+- `scale_factor`: fattore globale applicato alle incertezze con `fit_method="residual"`; vale `1.0` con `fit_method="absolute"`.
 
 ## Quando leggerlo
 
@@ -41,8 +43,9 @@ result = lin_fit(x, y, sigma_y, show_plot=False)
 print(result.slope)
 print(result.intercept_std)
 print(result.reduced_chi2)
+print(result.fit_method)
 ```
 
 ## Note
 
-La classe non esegue calcoli da sola: e una rappresentazione dell'output prodotto da [`lin_fit`](lin-fit.md). Il parametro `normalize_residuals` di `lin_fit` non aggiunge campi e non cambia i valori numerici contenuti in questa classe; agisce solo sul pannello dei residui della figura.
+La classe non esegue calcoli da sola: e una rappresentazione dell'output prodotto da [`lin_fit`](lin-fit.md). Il parametro `normalize_residuals` di `lin_fit` non aggiunge campi e non cambia i valori numerici contenuti in questa classe; agisce solo sul pannello dei residui della figura. Il campo `scale_factor` e invece parte del calcolo: con `fit_method="residual"` descrive la scala di incertezza stimata dai residui.

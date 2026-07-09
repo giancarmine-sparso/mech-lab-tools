@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-label="MesPy icon"><mask id="gap0"><rect x="-20" y="-20" width="104" height="104" fill="white"></rect><circle cx="40" cy="32" r="12" fill="black"></circle></mask>
+  <path d="M53 52 L11 52 L40 32 L11 12 L53 12" fill="none" stroke="#1D4E89" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" mask="url(#gap0)"></path>
+  <circle cx="40" cy="32" r="8" fill="#F2A33C"></circle></svg>

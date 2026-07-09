@@ -76,6 +76,102 @@ def test_lin_fit_returns_typed_result_and_expected_parameters():
     assert result.dof == len(x) - 2
     assert result.iterations == 0
     assert result.converged is True
+    assert result.fit_method == "absolute"
+    assert result.scale_factor == pytest.approx(1.0)
+
+
+def test_lin_fit_residual_without_sigma_y_estimates_common_uncertainty():
+    x = np.arange(0.0, 6.0)
+    y = np.array([1.1, 3.0, 5.2, 6.8, 9.3, 11.1])
+
+    result = lin_fit(x, y, fit_method="residual", show_plot=False)
+
+    expected_slope, expected_intercept = np.polyfit(x, y, deg=1)
+    expected_residuals = y - expected_slope * x - expected_intercept
+    expected_sigma = np.sqrt(np.sum(expected_residuals**2) / (x.size - 2))
+    expected_slope_std = expected_sigma / np.sqrt(np.sum((x - np.mean(x)) ** 2))
+    expected_intercept_std = expected_sigma * np.sqrt(
+        np.mean(x**2) / np.sum((x - np.mean(x)) ** 2)
+    )
+
+    assert result.fit_method == "residual"
+    assert result.slope == pytest.approx(expected_slope)
+    assert result.intercept == pytest.approx(expected_intercept)
+    assert result.scale_factor == pytest.approx(expected_sigma)
+    assert result.residual_std == pytest.approx(expected_sigma)
+    assert result.slope_std == pytest.approx(expected_slope_std)
+    assert result.intercept_std == pytest.approx(expected_intercept_std)
+    assert result.chi2 == pytest.approx(result.dof)
+    assert result.reduced_chi2 == pytest.approx(1.0)
+    assert result.figure is None
+
+
+def test_lin_fit_residual_with_sigma_y_scales_parameter_uncertainties():
+    x, y, sigma_y, _, _ = make_placebo_data()
+
+    result_absolute = lin_fit(x, y, sigma_y, show_plot=False)
+    result_residual = lin_fit(
+        x,
+        y,
+        sigma_y,
+        fit_method="residual",
+        show_plot=False,
+    )
+
+    expected_scale = np.sqrt(result_absolute.reduced_chi2)
+
+    assert result_residual.fit_method == "residual"
+    assert result_residual.slope == pytest.approx(result_absolute.slope)
+    assert result_residual.intercept == pytest.approx(result_absolute.intercept)
+    assert result_residual.scale_factor == pytest.approx(expected_scale)
+    assert result_residual.slope_std == pytest.approx(
+        result_absolute.slope_std * expected_scale
+    )
+    assert result_residual.intercept_std == pytest.approx(
+        result_absolute.intercept_std * expected_scale
+    )
+    assert result_residual.chi2 == pytest.approx(result_residual.dof)
+    assert result_residual.reduced_chi2 == pytest.approx(1.0)
+
+
+def test_lin_fit_residual_with_sigma_x_scales_iterative_fit_uncertainties():
+    x, y, sigma_y, sigma_x, _, _ = make_placebo_data_with_sigma_x()
+
+    result_absolute = lin_fit(x, y, sigma_y, sigma_x=sigma_x, show_plot=False)
+    result_residual = lin_fit(
+        x,
+        y,
+        sigma_y,
+        fit_method="residual",
+        sigma_x=sigma_x,
+        show_plot=False,
+    )
+
+    expected_scale = np.sqrt(result_absolute.reduced_chi2)
+
+    assert result_residual.slope == pytest.approx(result_absolute.slope)
+    assert result_residual.intercept == pytest.approx(result_absolute.intercept)
+    assert result_residual.iterations == result_absolute.iterations
+    assert result_residual.scale_factor == pytest.approx(expected_scale)
+    assert result_residual.slope_std == pytest.approx(
+        result_absolute.slope_std * expected_scale
+    )
+    assert result_residual.intercept_std == pytest.approx(
+        result_absolute.intercept_std * expected_scale
+    )
+    assert result_residual.reduced_chi2 == pytest.approx(1.0)
+
+
+def test_lin_fit_residual_plot_uses_estimated_uncertainty():
+    x = np.arange(0.0, 6.0)
+    y = np.array([1.1, 3.0, 5.2, 6.8, 9.3, 11.1])
+
+    result = lin_fit(x, y, fit_method="residual", show_plot=True)
+
+    np.testing.assert_allclose(
+        get_residual_vertical_errorbar_half_lengths(result),
+        np.full_like(x, result.scale_factor),
+    )
 
 
 def test_lin_fit_accepts_custom_plot_styling_kwargs():
@@ -305,6 +401,27 @@ def test_lin_fit_save_path_requires_show_plot():
 
 
 def test_lin_fit_raises_on_invalid_input():
+    with pytest.raises(ValueError, match="sigma_y"):
+        lin_fit([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], show_plot=False)
+
+    with pytest.raises(ValueError, match="fit_method"):
+        lin_fit(
+            [1.0, 2.0, 3.0],
+            [1.0, 2.0, 3.0],
+            [0.1, 0.1, 0.1],
+            fit_method="post",
+            show_plot=False,
+        )
+
+    with pytest.raises(ValueError, match="sigma_x"):
+        lin_fit(
+            [1.0, 2.0, 3.0],
+            [1.0, 2.0, 3.0],
+            fit_method="residual",
+            sigma_x=[0.1, 0.1, 0.1],
+            show_plot=False,
+        )
+
     with pytest.raises(ValueError, match="stessa lunghezza"):
         lin_fit([1.0, 2.0], [1.0, 2.0, 3.0], [0.1, 0.1, 0.1], show_plot=False)
 

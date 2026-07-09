@@ -1,6 +1,6 @@
 # Funzionamento
 
-Questa pagina descrive il flusso interno di `lin_fit` e l'ordine con cui vengono applicate validazioni, stima dei coefficienti, eventuale aggiornamento iterativo dei pesi, diagnostiche e plotting. A differenza di [Panoramica](panoramica.md), qui l'obiettivo non e ripetere la lista dei parametri, ma mostrare come la funzione costruisce davvero il fit lineare pesato.
+Questa pagina descrive il flusso interno di `lin_fit` e l'ordine con cui vengono applicate validazioni, stima dei coefficienti, eventuale aggiornamento iterativo dei pesi, diagnostiche e plotting. A differenza di [Panoramica](panoramica.md), qui l'obiettivo non e ripetere la lista dei parametri, ma mostrare come la funzione costruisce davvero il fit lineare nelle modalita `"absolute"` e `"residual"`.
 
 I frammenti seguenti sono estratti dal codice attuale di `src/mespy/fit_utils.py`. Le formule di base riprendono e adattano la formulazione teorica gia presente nella documentazione legacy `fit_utils.tex`; il criterio di arresto, le diagnostiche restituite e la banda del grafico sono invece spiegati a partire dall'implementazione attuale. Gli helper privati vengono citati solo per chiarire il flusso; i dettagli completi sono documentati in [`_as_float_vector`](../../../checks/stats_utils/as-float-vector.md), [`_fit_coefficients`](../../../checks/fit_utils/fit-coefficients.md), [`_validate_axis_limits`](../../../checks/plot_utils/validate-axis-limits.md), [`_validate_decimals`](../../../checks/plot_utils/validate-decimals.md), [`_validate_figsize`](../../../checks/plot_utils/validate-figsize.md) e [`_style_context`](../../../checks/plot_utils/style-context.md). Quando servono i simboli $\bar{x}_w$, $\mathrm{Var}_w$ e $\mathrm{Cov}_w$, il riferimento pratico sono le funzioni pubbliche [`weighted_mean`](../../stats_utils/weighted-mean.md), [`variance`](../../stats_utils/variance.md) e [`covariance`](../../stats_utils/covariance.md).
 
@@ -8,24 +8,39 @@ I frammenti seguenti sono estratti dal codice attuale di `src/mespy/fit_utils.py
 
 L'implementazione segue questa sequenza:
 
-1. Converte `x`, `y` e `sigma_y` in vettori `float64` monodimensionali e finiti.
-2. Verifica che `x`, `y` e `sigma_y` abbiano la stessa lunghezza e che i punti siano almeno 3.
-3. Valida `decimals` come intero non negativo e leggibile.
-4. Valida `tol` come scalare positivo e `max_iter` come intero positivo.
-5. Se `sigma_x` e presente, lo valida come vettore strettamente positivo con la stessa forma di `x`.
-6. Costruisce i pesi iniziali $w_i = 1 / \sigma_{y_i}^2$.
-7. Stima una prima retta con `_fit_coefficients(...)`.
-8. Se `sigma_x` e presente, aggiorna iterativamente i pesi usando la varianza efficace $\sigma_{\mathrm{eff},i}^2 = \sigma_{y_i}^2 + m^2 \sigma_{x_i}^2$ finche la variazione relativa della pendenza scende sotto `tol`.
-9. Calcola varianze dei parametri, covarianza, correlazione, residui, `chi2`, `reduced_chi2` e altre diagnostiche.
-10. Se `show_plot=True`, entra in `_style_context(style)` e costruisce una figura a due pannelli con dati, retta e residui fisici o normalizzati.
-11. Restituisce un [`LinearFitResult`](../linear-fit-result.md) con tutti i risultati numerici e la figura opzionale.
+1. Valida `fit_method`, che puo essere `"absolute"` oppure `"residual"`.
+2. Converte `x`, `y` e, quando presente, `sigma_y` in vettori `float64` monodimensionali e finiti.
+3. Verifica che i vettori abbiano la stessa lunghezza e che i punti siano almeno 3.
+4. Valida `decimals` come intero non negativo e leggibile.
+5. Valida `tol` come scalare positivo e `max_iter` come intero positivo.
+6. Se `sigma_x` e presente, lo valida come vettore strettamente positivo con la stessa forma di `x`.
+7. Costruisce i pesi iniziali $w_i = 1 / \sigma_{y_i}^2$; con `fit_method="residual"` senza `sigma_y`, usa temporaneamente $\sigma_{y_i}=1$ per ottenere pesi tutti uguali.
+8. Stima una prima retta con `_fit_coefficients(...)`.
+9. Se `sigma_x` e presente, aggiorna iterativamente i pesi usando la varianza efficace $\sigma_{\mathrm{eff},i}^2 = \sigma_{y_i}^2 + m^2 \sigma_{x_i}^2$ finche la variazione relativa della pendenza scende sotto `tol`.
+10. Calcola residui, chi quadrato grezzo e, con `fit_method="residual"`, il fattore di scala globale da applicare alle incertezze.
+11. Calcola varianze dei parametri, covarianza, correlazione, `chi2`, `reduced_chi2` e altre diagnostiche.
+12. Se `show_plot=True`, entra in `_style_context(style)` e costruisce una figura a due pannelli con dati, retta e residui fisici o normalizzati.
+13. Restituisce un [`LinearFitResult`](../linear-fit-result.md) con tutti i risultati numerici e la figura opzionale.
 
 ## Validazione input e setup numerico
 
 ```python
+fit_method = _validate_fit_method(fit_method)
+use_residual_scale = fit_method == "residual"
+
 x_values = _as_float_vector("x", x)
 y_values = _as_float_vector("y", y)
-sigma_y_values = _validate_positive_vector("sigma_y", sigma_y)
+
+if sigma_y is None:
+    if not use_residual_scale:
+        raise ValueError("sigma_y è obbligatorio quando fit_method='absolute'")
+    if sigma_x is not None:
+        raise ValueError(
+            "sigma_x può essere usato con fit_method='residual' solo se sigma_y è presente"
+        )
+    sigma_y_values = np.ones_like(x_values)
+else:
+    sigma_y_values = _validate_positive_vector("sigma_y", sigma_y)
 
 if x_values.shape != y_values.shape or x_values.shape != sigma_y_values.shape:
     raise ValueError("x, y e sigma_y devono avere la stessa lunghezza")
@@ -55,8 +70,11 @@ weights = 1.0 / sigma_y2
 
 Questo primo blocco definisce il contratto numerico del fit.
 
-- `x`, `y` e `sigma_y` non vengono usati direttamente: prima passano attraverso validatori che impongono array numerici, monodimensionali e finiti.
+- `fit_method` separa i due modelli: `"absolute"` richiede `sigma_y`, mentre `"residual"` puo stimare una scala comune dai residui.
+- `x`, `y` e, quando presente, `sigma_y` non vengono usati direttamente: prima passano attraverso validatori che impongono array numerici, monodimensionali e finiti.
 - `sigma_y` e, se presente, `sigma_x` devono essere strettamente positivi. Questo e essenziale per poter costruire pesi fisicamente e numericamente sensati.
+- Con `fit_method="residual"` senza `sigma_y`, `sigma_y_values = np.ones_like(x_values)` serve solo a rendere il fit non pesato; la scala fisica dell'incertezza viene stimata dopo il calcolo dei residui.
+- `sigma_x` non e ammesso senza `sigma_y`: senza una scala verticale iniziale, la varianza efficace $\sigma_y^2 + m^2\sigma_x^2$ non sarebbe definita in modo coerente.
 - La funzione rifiuta dataset con meno di 3 punti, perche il fit lineare restituisce due parametri e poi usa `dof = n - 2` nelle diagnostiche.
 - `decimals` viene validato anche quando `show_plot=False`, perche fa parte del contratto generale della funzione e della formattazione della legenda quando il grafico e attivo.
 - I pesi iniziali del caso base sono
@@ -65,7 +83,7 @@ $$
 w_i = \frac{1}{\sigma_{y_i}^2}.
 $$
 
-Questa e la formulazione standard del fit lineare pesato quando le incertezze sono solo sulle ordinate.
+Questa e la formulazione standard del fit lineare pesato quando le incertezze sono solo sulle ordinate. Con `fit_method="residual"` senza `sigma_y`, tutti questi pesi valgono `1`.
 
 - Le quantita pesate che compaiono piu avanti si appoggiano alle funzioni statistiche del package:
 
@@ -203,28 +221,39 @@ rel_change = abs(next_slope - previous_slope) / max(abs(next_slope), 1e-300)
 ## Diagnostiche del fit
 
 ```python
-sum_w = float(np.sum(weights))
-var_m = 1.0 / (var_x * sum_w)
-var_c = weighted_mean(x_values**2, weights) / (var_x * sum_w)
-cov_mc = -weighted_mean(x_values, weights) / (var_x * sum_w)
-
-sigma_m = float(np.sqrt(var_m))
-sigma_c = float(np.sqrt(var_c))
-rho_mc = float(cov_mc / (sigma_m * sigma_c))
-
 residuals = y_values - slope * x_values - intercept
 dof = n - 2
 residual_std = float(np.sqrt(np.sum(residuals**2) / dof))
 
-sigma_fit2 = sigma_y2 if sigma_x2 is None else sigma_y2 + slope**2 * sigma_x2
+raw_sigma_fit2 = (
+    sigma_y2 if sigma_x2 is None else sigma_y2 + slope**2 * sigma_x2
+)
+raw_chi2 = float(np.sum((residuals**2) / raw_sigma_fit2))
+raw_reduced_chi2 = float(raw_chi2 / dof)
+
+covariance_scale = raw_reduced_chi2 if use_residual_scale else 1.0
+scale_factor = float(np.sqrt(covariance_scale))
+
+sum_w = float(np.sum(weights))
+base_var_m = 1.0 / (var_x * sum_w)
+base_var_c = weighted_mean(x_values**2, weights) / (var_x * sum_w)
+base_cov_mc = -weighted_mean(x_values, weights) / (var_x * sum_w)
+
+var_m = base_var_m * covariance_scale
+var_c = base_var_c * covariance_scale
+cov_mc = base_cov_mc * covariance_scale
+
+sigma_m = float(np.sqrt(var_m))
+sigma_c = float(np.sqrt(var_c))
+
+sigma_fit2 = raw_sigma_fit2 * covariance_scale
+chi2 = raw_chi2 if not use_residual_scale else raw_chi2 / covariance_scale
+reduced_chi2 = float(chi2 / dof)
 
 normalized_residuals = residuals / np.sqrt(sigma_fit2)
-
-chi2 = float(np.sum((residuals**2) / sigma_fit2))
-reduced_chi2 = float(chi2 / dof)
 ```
 
-Dopo aver fissato i pesi finali, `lin_fit` costruisce le principali grandezze diagnostiche del modello.
+Dopo aver fissato i pesi finali, `lin_fit` costruisce le principali grandezze diagnostiche del modello. La differenza tra `"absolute"` e `"residual"` entra attraverso `covariance_scale`.
 
 Se chiamiamo
 
@@ -232,19 +261,27 @@ $$
 S_w = \sum_i w_i,
 $$
 
-allora il codice usa le formule
+allora il codice calcola prima le formule base
 
 $$
-\mathrm{Var}(m) = \frac{1}{\mathrm{Var}_w(x)\,S_w},
-$$
-
-$$
-\mathrm{Var}(c) = \frac{\overline{x^2}_w}{\mathrm{Var}_w(x)\,S_w},
+\mathrm{Var}_0(m) = \frac{1}{\mathrm{Var}_w(x)\,S_w},
 $$
 
 $$
-\mathrm{Cov}(m,c) = -\frac{\bar{x}_w}{\mathrm{Var}_w(x)\,S_w}.
+\mathrm{Var}_0(c) = \frac{\overline{x^2}_w}{\mathrm{Var}_w(x)\,S_w},
 $$
+
+$$
+\mathrm{Cov}_0(m,c) = -\frac{\bar{x}_w}{\mathrm{Var}_w(x)\,S_w}.
+$$
+
+Con `fit_method="absolute"` queste quantita vengono usate direttamente. Con `fit_method="residual"` vengono moltiplicate per
+
+$$
+s^2 = \chi^2_{\nu,\mathrm{raw}},
+$$
+
+dove $\chi^2_{\nu,\mathrm{raw}}$ e il chi quadrato ridotto calcolato con le incertezze di input, oppure con pesi unitari se `sigma_y` non e stato fornito. Il campo `scale_factor` restituito vale $s$.
 
 Da qui seguono direttamente
 
@@ -279,7 +316,7 @@ $$
 \sqrt{\frac{\sum_i r_i^2}{\mathrm{dof}}}.
 $$
 
-Per il chi quadrato, invece, il codice usa una varianza di fit che dipende dal ramo seguito:
+Per il chi quadrato grezzo, invece, il codice usa una varianza di fit che dipende dal ramo seguito:
 
 $$
 \sigma_{\mathrm{fit},i}^2 =
@@ -292,10 +329,12 @@ $$
 e quindi
 
 $$
-\chi^2 = \sum_i \frac{r_i^2}{\sigma_{\mathrm{fit},i}^2},
+\chi^2_{\mathrm{raw}} = \sum_i \frac{r_i^2}{\sigma_{\mathrm{fit},i}^2},
 \qquad
-\chi^2_\nu = \frac{\chi^2}{\mathrm{dof}}.
+\chi^2_{\nu,\mathrm{raw}} = \frac{\chi^2_{\mathrm{raw}}}{\mathrm{dof}}.
 $$
+
+Con `fit_method="residual"` la varianza usata per residui normalizzati, banda e `chi2` finale viene moltiplicata per $s^2$. Di conseguenza, quando $s > 0$, il risultato finale ha `reduced_chi2` pari a 1 per costruzione; l'informazione sulla scala stimata resta disponibile in `scale_factor`.
 
 La stessa varianza di fit viene usata anche per costruire i residui normalizzati disponibili nel ramo di plotting:
 
@@ -309,7 +348,7 @@ Questa grandezza non viene salvata nel [`LinearFitResult`](../linear-fit-result.
 Alcune osservazioni pratiche aiutano a leggere questi numeri nel modo corretto.
 
 - `residual_std` non pesa i residui con le incertezze sperimentali: misura solo la dispersione quadratica dei residui attorno alla retta.
-- `chi2` e `reduced_chi2` invece confrontano i residui con le incertezze del modello, quindi hanno una lettura statistica diversa.
+- `chi2` e `reduced_chi2` invece confrontano i residui con le incertezze del modello, quindi hanno una lettura statistica diversa. Con `fit_method="residual"`, la scala viene assorbita in `scale_factor`.
 - Nel caso con `sigma_x`, sia i pesi finali sia `chi2` usano la stessa forma di varianza efficace.
 - `normalize_residuals` non modifica `residuals`, `residual_std`, `chi2` o `reduced_chi2`: cambia solo i valori disegnati nel pannello dei residui.
 
@@ -360,8 +399,8 @@ if show_plot:
         fig, (ax_fit, ax_res) = plt.subplots(2, 1, **subplots_kwargs)
 
         errorbar_kwargs = {
-            "yerr": sigma_y_values,
-            "xerr": sigma_x_values if use_sigma_x else None,
+            "yerr": plot_sigma_y_values,
+            "xerr": plot_sigma_x_values if use_sigma_x else None,
             "fmt": "o",
             "markersize": 4,
             "elinewidth": 1,
@@ -392,7 +431,7 @@ if show_plot:
 
         if show_band:
             x_bar = weighted_mean(x_values, weights)
-            sigma_y_fit = np.sqrt(
+            sigma_y_fit = scale_factor * np.sqrt(
                 1.0 / sum_w + (x_fit - x_bar) ** 2 / (var_x * sum_w)
             )
             ax_fit.fill_between(
@@ -410,7 +449,7 @@ if show_plot:
         residuals_yerr = (
             np.ones_like(normalized_residuals)
             if normalize_residuals
-            else sigma_y_values
+            else plot_sigma_y_values
         )
         residuals_axis_label = (
             r"Residuals / $\sigma_\mathrm{eff}$"
@@ -454,6 +493,8 @@ return LinearFitResult(
     iterations=iterations,
     converged=converged,
     figure=fig,
+    fit_method=fit_method,
+    scale_factor=scale_factor,
 )
 ```
 
@@ -463,11 +504,12 @@ L'ultima parte gestisce plotting e packaging finale del risultato.
 - Se `show_plot=False`, tutta la parte grafica viene saltata e `figure` nel risultato finale vale `None`.
 - Quando il grafico e attivo, `lin_fit` risolve prima il nome stile con [`_resolve_style`](../../../checks/plot_utils/resolve-style.md) e poi usa lo stesso [`_style_context`](../../../checks/plot_utils/style-context.md) di [`histogram`](../../plot_utils/histogram.md): `style=None` mantiene gli `rcParams` correnti, i nomi degli stili bundled puntano al file `.mplstyle` corrispondente, qualunque altra stringa viene passata a Matplotlib.
 - Quando il grafico e attivo, `lin_fit` crea sempre due pannelli verticali: in alto il fit, in basso i residui.
-- Con `normalize_residuals=False`, il pannello inferiore mostra i residui fisici `r_i` e le barre verticali hanno ampiezza `sigma_y`, come nel pannello superiore.
+- Con `normalize_residuals=False`, il pannello inferiore mostra i residui fisici `r_i` e le barre verticali hanno ampiezza `sigma_y * scale_factor`, come nel pannello superiore.
 - Con `normalize_residuals=True`, il pannello inferiore mostra `r_i / sigma_fit_i`; le barre verticali diventano unitarie perche l'asse e adimensionale.
 - Se `normalize_residuals=True` e `residuals_label` e ancora `"Residuals"`, la label del pannello inferiore viene sostituita automaticamente con `Residuals / sigma_eff`. Una label passata esplicitamente dall'utente viene invece rispettata.
 - `figsize` e `dpi` vengono passati a `plt.subplots(...)` solo quando sono stati specificati. In assenza di override, decide lo stile attivo.
 - `point_color`, quando presente, viene applicato sia ai marker sia alle barre d'errore; `fit_color` viene usato per la retta; `band_color` controlla la fascia attorno alla retta; `res_line_color` controlla la linea orizzontale a zero nel pannello dei residui. Quando `res_line_color` e `None`, la linea dei residui riusa il colore effettivo della retta; gli altri colori lasciati a `None` vengono ricavati dal ciclo colori dello stile attivo.
+- Con `fit_method="residual"`, `scale_factor` viene applicato anche alle barre d'errore disegnate e alla banda della retta.
 - `xlim` viene applicato sia a `ax_fit` sia a `ax_res`, mentre `ylim` viene applicato solo al pannello superiore.
 - `show_grid=False` spegne esplicitamente la griglia su entrambi i pannelli; `show_grid=True` con `grid_alpha is None` lascia la griglia allo stile attivo; `grid_alpha` esplicito applica una griglia sull'asse `y` di entrambi i pannelli.
 - `decimals`, `show_fit_params` e `fit_label` influiscono solo sulla stringa della legenda della retta, non sul calcolo numerico del fit.
@@ -486,8 +528,8 @@ $$
 $$
 
 $$
-\sigma_{\mathrm{line}}(x) =
-\sqrt{
+s\,\sigma_{\mathrm{line},0}(x) =
+s\sqrt{
 \frac{1}{S_w}
 +
 \frac{(x - \bar{x}_w)^2}{\mathrm{Var}_w(x)\,S_w}
@@ -500,7 +542,7 @@ $$
 y_{\mathrm{fit}}(x) \pm \sigma_{\mathrm{line}}(x).
 $$
 
-Questa e la formula implementata oggi nel codice: non viene moltiplicata per `reduced_chi2` ne per altri fattori di scala aggiuntivi.
+Con `fit_method="absolute"` vale $s=1$. Con `fit_method="residual"` il valore $s$ e il `scale_factor` stimato dai residui.
 
 Il valore restituito non e una coppia `(fig, ax)` ma un [`LinearFitResult`](../linear-fit-result.md), cioe un contenitore immutabile che raccoglie parametri del fit, incertezze, diagnostiche, residui e figura opzionale.
 
@@ -509,8 +551,11 @@ Il valore restituito non e una coppia `(fig, ax)` ma un [`LinearFitResult`](../l
 Alcune combinazioni di parametri definiscono il comportamento pratico piu importante della funzione.
 
 - `sigma_x` attiva il ramo iterativo e rende rilevanti `tol` e `max_iter`.
+- `fit_method="residual"` senza `sigma_y` esegue un fit non pesato e stima una singola scala verticale dai residui.
+- `fit_method="residual"` con `sigma_y` usa `sigma_y` come pesi relativi e applica il fattore `scale_factor`.
+- `sigma_x` richiede sempre `sigma_y`, anche con `fit_method="residual"`.
 - `tol` e una soglia di convergenza numerica sulla pendenza relativa, non una soglia statistica sulla qualita del fit.
-- Se `sigma_x` non e presente, il fit usa solo i pesi `1 / sigma_y**2`, non itera e marca subito `converged=True`.
+- Se `sigma_x` non e presente, il fit non itera e marca subito `converged=True`.
 - `style=None` usa gli `rcParams` correnti; `style="mespy"`, `style="report"` e gli altri stili inclusi vengono risolti dal package; qualunque altra stringa passa direttamente da Matplotlib.
 - `point_color`, `fit_color`, `band_color`, `res_line_color`, `title_fontsize`, `title_pad`, `legend_fontsize`, `legend_loc` e `grid_alpha` sovrascrivono lo stile solo quando non sono `None`.
 - `show_plot=False` disattiva tutta la parte Matplotlib: in questo caso `figure=None` e `xlim` e `ylim` non vengono nemmeno validati, ma `decimals`, `tol` e `max_iter` continuano a essere controllati.

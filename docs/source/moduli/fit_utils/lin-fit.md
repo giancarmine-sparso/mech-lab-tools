@@ -6,8 +6,9 @@
 lin_fit(
     x: ArrayLike,
     y: ArrayLike,
-    sigma_y: ArrayLike,
+    sigma_y: ArrayLike | None = None,
     *,
+    fit_method: Literal["absolute", "residual"] = "absolute",
     sigma_x: ArrayLike | None = None,
     tol: float = 1e-10,
     max_iter: int = 100,
@@ -44,7 +45,11 @@ lin_fit(
 ) -> LinearFitResult
 ```
 
-`lin_fit` esegue un fit lineare pesato `y = m x + c` su dati sperimentali, con supporto opzionale alle incertezze anche su `x`.
+`lin_fit` esegue un fit lineare `y = m x + c` su dati sperimentali, con supporto alle incertezze assolute di input e alla scala stimata dai residui.
+
+Con `fit_method="absolute"` usa le incertezze assolute passate in `sigma_y` e, se presente, `sigma_x`. Questo resta il comportamento di default ed e compatibile con le chiamate esistenti.
+
+Con `fit_method="residual"` stima un fattore globale di incertezza dai residui. Se ometti `sigma_y`, esegue un fit lineare non pesato e usa `residual_std` come incertezza verticale comune. Se passi `sigma_y`, quelle incertezze definiscono i pesi relativi e le incertezze finali vengono scalate con il chi quadrato ridotto grezzo osservato.
 
 Di default applica lo stile Matplotlib `mespy`; passa `style=None` per usare gli `rcParams` correnti oppure il nome di un altro stile per delegare a Matplotlib.
 
@@ -53,6 +58,8 @@ I parametri `figsize`, `dpi`, `title_fontsize`, `title_pad`, `legend_fontsize`, 
 `fit_label` e `band_label` permettono di personalizzare i testi della legenda di retta e banda. In particolare, `fit_label` viene usato solo quando `show_fit_params=False`; con `show_fit_params=True` la funzione genera automaticamente una label con `m` e `c`.
 
 `normalize_residuals` controlla solo il pannello inferiore del grafico. Con il default `False`, il pannello mostra i residui fisici `y_i - (m x_i + c)`. Con `True`, mostra invece i residui normalizzati `r_i / sigma_eff_i`, usando la stessa varianza efficace impiegata per `chi2`. Il campo `LinearFitResult.residuals` resta sempre non normalizzato.
+
+Con `fit_method="residual"`, `LinearFitResult.scale_factor` contiene il fattore stimato. Nel caso non pesato coincide con la deviazione standard dei residui; nel caso con `sigma_y` fornito rappresenta il fattore moltiplicativo applicato alle incertezze di input.
 
 Questa pagina resta il punto di accesso rapido alla funzione. I dettagli pratici sono raccolti in [Panoramica](lin-fit/panoramica.md), mentre [Funzionamento](lin-fit/funzionamento.md) e predisposta come sottopagina separata.
 

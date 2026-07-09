@@ -1,21 +1,42 @@
-# MesPy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/mespy-logo-horizontal-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/mespy-logo-horizontal.svg">
+    <img src="assets/brand/mespy-logo-horizontal.svg" alt="MesPy" width="420">
+  </picture>
+</p>
+<p align="center">
+  <a href="https://pypi.org/project/mespy/">
+    <img src="https://img.shields.io/pypi/v/mespy?label=pypi" alt="PyPI version">
+  </a>
+  <a href="https://pypi.org/project/mespy/">
+    <img src="https://img.shields.io/pypi/pyversions/mespy?label=python" alt="Python versions">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  </a>
+  <a href="https://giancarmine-sparso.github.io/mespy/">
+    <img src="https://img.shields.io/badge/docs-GitHub%20Pages-blue" alt="Documentation">
+  </a>
+</p>
+<p align="center">
+  <em>Small Python toolbox for mechanics laboratory data analysis.</em>
+</p>
+<p align="center">
+  <a href="https://giancarmine-sparso.github.io/mespy/">
+    <img src="https://img.shields.io/badge/Open%20the%20MesPy%20documentation-21558F?style=for-the-badge" alt="Open the MesPy documentation">
+  </a>
+</p>
 
-[![PyPI version](https://img.shields.io/pypi/v/mespy.svg)](https://pypi.org/project/mespy/)
-[![Python versions](https://img.shields.io/pypi/pyversions/mespy.svg)](https://pypi.org/project/mespy/)
-[![License](https://img.shields.io/pypi/l/mespy.svg)](https://github.com/giancarmine-sparso/mespy/blob/main/LICENSE)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://giancarmine-sparso.github.io/mespy/)
-> Documentation: [giancarmine-sparso.github.io/mespy](https://giancarmine-sparso.github.io/mespy/index.html#)
 
-Small Python toolbox for mechanics laboratory data analysis.
-
-`mespy` started as a set of helper functions that kept reappearing across mechanics lab notebooks and classroom scripts: loading CSV measurements, computing descriptive and weighted statistics, plotting histograms, and running linear fits with uncertainties. The library brings those recurring tasks together into a single typed package with a small public API that is easy to use in notebooks, scripts, and teaching material.
+`MesPy` started as a set of helper functions that kept reappearing across mechanics lab notebooks and classroom scripts: loading CSV measurements, computing descriptive and weighted statistics, plotting histograms, and running linear fits with uncertainties. The library brings those recurring tasks together into a single typed package with a small public API that is easy to use in notebooks, scripts, and teaching material.
 
 ## What It Provides
 
 - CSV loading with explicit missing-data policies
 - Descriptive and weighted statistics for one-dimensional data
 - Histogram plotting for quick exploratory analysis
-- Weighted linear fitting with a typed result object
+- Linear fitting with absolute or residual-scaled uncertainties and a typed result object
 - Clear validation errors instead of silent `nan` propagation
 
 ## Public API

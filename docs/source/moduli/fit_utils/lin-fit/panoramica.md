@@ -2,12 +2,13 @@
 
 ## Scopo
 
-Eseguire un fit lineare pesato `y = m x + c` su dati sperimentali con incertezze su `y` e, opzionalmente, anche su `x`.
+Eseguire un fit lineare `y = m x + c` su dati sperimentali, sia con incertezze assolute di input sia con incertezze scalate dai residui.
 
 ## Parametri
 
 - `x`, `y`: dati sperimentali.
-- `sigma_y`: incertezze su `y`, strettamente positive.
+- `sigma_y`: incertezze su `y`, strettamente positive. Sono obbligatorie con `fit_method="absolute"` e opzionali con `fit_method="residual"`.
+- `fit_method`: `"absolute"` usa le incertezze assolute fornite dall'utente; `"residual"` stima un fattore globale di scala dai residui. Se `sigma_y` non e fornito, il fit usa pesi tutti uguali.
 - `sigma_x`: incertezze opzionali su `x`, anch'esse strettamente positive.
 - `decimals`: precisione testuale usata nelle etichette del fit. Deve essere un intero compreso tra 0 e 20.
 - `tol`: tolleranza relativa usata nel criterio di convergenza quando `sigma_x` e presente.
@@ -27,6 +28,9 @@ Un [`LinearFitResult`](../linear-fit-result.md) con parametri del fit, incertezz
 ## Errori ed eccezioni
 
 - `ValueError` se `x`, `y` e `sigma_y` non hanno la stessa lunghezza.
+- `ValueError` se `sigma_y` manca con `fit_method="absolute"`.
+- `ValueError` se `fit_method` non e `"absolute"` o `"residual"`.
+- `ValueError` se passi `sigma_x` con `fit_method="residual"` senza passare anche `sigma_y`.
 - `ValueError` se ci sono meno di 3 punti.
 - `ValueError` se gli input contengono valori non finiti.
 - `ValueError` se `sigma_y` o `sigma_x` contengono valori non positivi.
@@ -58,6 +62,19 @@ result = lin_fit(
 )
 ```
 
+Per stimare l'incertezza dai residui senza passare barre d'errore:
+
+```python
+result = lin_fit(
+    x,
+    y,
+    fit_method="residual",
+    show_plot=False,
+)
+
+print(result.scale_factor)  # coincide con result.residual_std
+```
+
 Per mostrare i residui normalizzati nel pannello inferiore:
 
 ```python
@@ -74,6 +91,8 @@ In questo caso i punti del pannello dei residui sono `result.residuals / sigma_y
 ## Note
 
 - Nel caso base i pesi sono `1 / sigma_y**2`.
+- Con `fit_method="residual"` senza `sigma_y`, i coefficienti sono quelli del fit non pesato e `scale_factor` coincide con `residual_std`.
+- Con `fit_method="residual"` e `sigma_y`, i coefficienti restano quelli del fit pesato con i pesi relativi `1 / sigma_y**2`, mentre `slope_std`, `intercept_std`, covarianza, banda ed errori disegnati vengono moltiplicati per il fattore di scala stimato.
 - Se `sigma_x` e presente, i pesi vengono aggiornati con la varianza efficace `sigma_y^2 + m^2 sigma_x^2`.
 - `normalize_residuals=True` usa la stessa varianza efficace del `chi2`, ma non cambia `result.residuals`, `result.residual_std`, `result.chi2` o `result.reduced_chi2`.
 - Quando `normalize_residuals=True`, le barre d'errore verticali del pannello inferiore sono unitarie e l'asse dei residui diventa adimensionale. Se `residuals_label` resta al default, la label viene adattata automaticamente.

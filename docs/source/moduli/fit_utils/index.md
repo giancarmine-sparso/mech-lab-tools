@@ -1,6 +1,6 @@
 # fit_utils.py
 
-`fit_utils.py` contiene il fit lineare pesato del package e il tipo di ritorno associato. E il modulo piu denso del progetto, perche combina statistica, validazione degli input e plotting opzionale, riusando anche il sistema di stile gia definito in `plot_utils`.
+`fit_utils.py` contiene il fit lineare del package e il tipo di ritorno associato. E il modulo piu denso del progetto, perche combina statistica, validazione degli input e plotting opzionale, riusando anche il sistema di stile gia definito in `plot_utils`.
 
 ## Import principali
 
@@ -22,13 +22,14 @@
 ## Cosa espone
 
 - [`LinearFitResult`](linear-fit-result.md)
-- [`lin_fit`](lin-fit.md)
+- [`lin_fit`](lin-fit.md), con incertezze assolute o scalate dai residui
 
 ## Di cosa si occupa
 
 - validare `x`, `y`, `sigma_y` e opzionalmente `sigma_x`
 - validare `decimals`, `tol` e `max_iter`
-- stimare pendenza e intercetta con minimi quadrati pesati
+- stimare pendenza e intercetta con minimi quadrati pesati o non pesati
+- stimare una scala globale di incertezza dai residui
 - aggiornare iterativamente i pesi quando esistono incertezze anche su `x`
 - calcolare residui, `chi2`, `reduced_chi2`, correlazione e altre diagnostiche
 - creare, se richiesto, una figura matplotlib con pannello del fit e pannello dei residui fisici o normalizzati usando lo stesso sistema di stile di `histogram`
