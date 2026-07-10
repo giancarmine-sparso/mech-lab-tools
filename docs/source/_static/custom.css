@@ -4,6 +4,16 @@
   --pst-font-family-monospace: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
 }
 
+.mespy-home-brand {
+  display: flex;
+  justify-content: center;
+}
+
+.mespy-home-brand img {
+  width: min(420px, 100%);
+  height: auto;
+}
+
 .bd-main .bd-content h1,
 .bd-main .bd-content h2,
 .bd-main .bd-content h3 {

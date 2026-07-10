@@ -1,14 +1,6 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="_static/mespy-logo-horizontal-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="_static/mespy-logo-horizontal.svg">
-    <img src="_static/mespy-logo-horizontal.svg" alt="MesPy" width="420">
-  </picture>
-</p>
+# <span class="visually-hidden">MesPy</span><span class="mespy-home-brand"><img src="_static/mespy-logo-horizontal.svg" class="only-light" alt="MesPy"><img src="_static/mespy-logo-horizontal-dark.svg" class="only-dark pst-js-only" alt="MesPy"></span>
 
-# mespy
-
-`mespy` e una toolbox Python per l'analisi di dati sperimentali.
+`mespy` è una toolbox Python per l'analisi di dati sperimentali.
 
 Questa documentazione e organizzata per modulo: ogni file principale ha una pagina panoramica e una pagina separata per ogni funzione pubblica. In parallelo c'e una sezione dedicata ai controlli interni, utile per capire come il package normalizza gli input e gestisce gli errori.
 

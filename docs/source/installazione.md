@@ -1,6 +1,6 @@
 # Installazione
 
-`mespy` richiede Python `3.12` o superiore. I comandi seguenti assumono che tu sia gia nella directory del progetto e che il virtualenv locale sia `.venv`, in coerenza con i target `make` del repository.
+`MesPy` richiede Python `3.12` o superiore. I comandi seguenti assumono che tu sia gia nella directory del progetto e che il virtualenv locale sia `.venv`, in coerenza con i target `make` del repository.
 
 ## Con uv
 
@@ -21,10 +21,10 @@ python -m pip install -e ".[dev]"
 
 ## Da jupyter-notebook
 
-Eseguire in una cella di codice 
- 
+Eseguire in una cella di codice
+
 ```bash
-%pip install mespy 
+%pip install mespy
 ```
 
 successivamente eliminare la cella.

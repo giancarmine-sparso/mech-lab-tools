@@ -4,7 +4,7 @@ SUPPORTED_LANGUAGES = [
 ]
 
 
-project = "mespy"
+project = "MesPy"
 copyright = "2026, Giancarmine Sparso"
 author = "Giancarmine Sparso"
 release = "1.0.0"
@@ -28,13 +28,19 @@ html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static", "../../assets/brand"]
 html_css_files = ["custom.css"]
 html_js_files = ["language-switcher.js"]
-html_title = "mespy"
+html_title = "MesPy"
 # html_logo = "_static/logo.svg"
 # html_favicon = "_static/favicon.svg"
 
 html_permalinks = False
 
 html_theme_options = {
+    "logo": {
+        "text": "MesPy",
+        "image_light": "../../assets/brand/mespy-icon.svg",
+        "image_dark": "../../assets/brand/mespy-icon-dark.svg",
+        "alt_text": "MesPy",
+    },
     "navigation_depth": 3,
     "show_toc_level": 2,
     "navbar_align": "content",
