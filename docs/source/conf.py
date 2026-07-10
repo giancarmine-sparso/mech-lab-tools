@@ -25,7 +25,7 @@ master_doc = "index"
 myst_heading_anchors = 3
 
 html_theme = "pydata_sphinx_theme"
-html_static_path = ["_static"]
+html_static_path = ["_static", "../../assets/brand"]
 html_css_files = ["custom.css"]
 html_js_files = ["language-switcher.js"]
 html_title = "mespy"

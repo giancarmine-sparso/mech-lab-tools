@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="_static/mespy-logo-horizontal-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="_static/mespy-logo-horizontal.svg">
+    <img src="_static/mespy-logo-horizontal.svg" alt="MesPy" width="420">
+  </picture>
+</p>
+
 # mespy
 
 `mespy` e una toolbox Python per l'analisi di dati sperimentali.
